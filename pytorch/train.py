@@ -79,12 +79,16 @@ class SeedlingDataset(Dataset):
         return len(self.labels)
 
 
-def vis_plot(vis, x, y, xlabel, ylabel, title, win=None):
+def vis_plot(vis, epoch, y_train, y_valid, metric_name='Loss', win=None):
     plt.grid(True)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.title(title)
-    plt.plot(x, y)
+    plt.xlabel('Epochs')
+    plt.ylabel(metric_name)
+    plt.title(metric_name + ' dynamic')
+
+    x = np.arange(start=1, stop=epoch + 2)
+    plt.plot(x, y_train, color='orange', label='Train')
+    plt.plot(x, y_valid, label='Valid')
+    plt.legend()
 
     if win is None:
         win = vis.matplot(plt)
@@ -95,14 +99,13 @@ def vis_plot(vis, x, y, xlabel, ylabel, title, win=None):
     return win
 
 
-def train(model, optimizer, criterion,
-          train_dl, valid_dl, epochs=10, save_to=None, vis=None):
+def train(model, optimizer, criterion, train_dl, valid_dl, epochs=10,
+          save_to=None, vis=None):
     best_loss_train, best_loss_valid = np.inf, np.inf
     best_acc_train, best_acc_valid = 0.0, 0.0
     losses_train, losses_valid = [], []
     accs_train, accs_valid = [], []
-    win_loss_train, win_loss_valid = None, None
-    win_acc_train, win_acc_valid = None, None
+    win_loss, win_acc = None, None
 
     for ep in np.arange(epochs):
         # train
@@ -147,17 +150,6 @@ def train(model, optimizer, criterion,
         losses_train.append(running_loss)
         accs_train.append(running_acc)
 
-        # plotting
-        if vis is not None:
-            win_loss_train = vis_plot(
-                vis, np.arange(start=1, stop=ep + 2), losses_train, 'Epochs',
-                'Loss', 'Train loss', win=win_loss_train
-            )
-            win_acc_train = vis_plot(
-                vis, np.arange(start=1, stop=ep + 2), accs_train, 'Epochs',
-                'Accuracy', 'Train accuracy', win=win_acc_train
-            )
-
         print('Train loss:', running_loss)
         print('Train acc:', running_acc)
 
@@ -199,13 +191,11 @@ def train(model, optimizer, criterion,
 
         # plotting
         if vis is not None:
-            win_loss_valid = vis_plot(
-                vis, np.arange(start=1, stop=ep + 2), losses_valid, 'Epochs',
-                'Loss', 'Valid loss', win=win_loss_valid
+            win_loss = vis_plot(
+                vis, ep, losses_train, losses_valid, 'Loss', win=win_loss
             )
-            win_acc_valid = vis_plot(
-                vis, np.arange(start=1, stop=ep + 2), accs_valid, 'Epochs',
-                'Accuracy', 'Valid accuracy', win=win_acc_valid
+            win_acc = vis_plot(
+                vis, ep, accs_train, accs_valid, 'Accuracy', win=win_acc
             )
 
         print('Valid loss:', running_loss)
