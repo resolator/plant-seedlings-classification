@@ -7,15 +7,20 @@ import torchvision
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+
 import torch.nn as nn
 import torch.optim as optim
 import torchvision.transforms as transforms
 
-from tqdm import tqdm
 from PIL import Image
+from tqdm import tqdm
+from visdom import Visdom
 from torch.utils.data import Dataset, DataLoader
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+MEAN = [0.485, 0.456, 0.406]
+STD = [0.229, 0.224, 0.225]
 
 
 def get_args():
@@ -43,6 +48,10 @@ def get_args():
                         help='Path to dir with "model.pth" and "optim.pth".')
     parser.add_argument('--pretrained', action='store_true',
                         help='Create pretrained model.')
+    parser.add_argument('--server',
+                        help='Visdom\'s address.')
+    parser.add_argument('--port', type=int,
+                        help='Visdom\'s port.')
 
     args = parser.parse_args()
     if not os.path.exists(args.save_to):
@@ -70,12 +79,30 @@ class SeedlingDataset(Dataset):
         return len(self.labels)
 
 
+def vis_plot(vis, x, y, xlabel, ylabel, title, win=None):
+    plt.grid(True)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.plot(x, y)
+
+    if win is None:
+        win = vis.matplot(plt)
+    else:
+        vis.matplot(plt, win=win)
+    plt.clf()
+
+    return win
+
+
 def train(model, optimizer, criterion,
-          train_dl, valid_dl, epochs=10, save_to=None):
-    best_loss_train = np.inf
-    best_loss_valid = np.inf
-    best_acc_train = 0.0
-    best_acc_valid = 0.0
+          train_dl, valid_dl, epochs=10, save_to=None, vis=None):
+    best_loss_train, best_loss_valid = np.inf, np.inf
+    best_acc_train, best_acc_valid = 0.0, 0.0
+    losses_train, losses_valid = [], []
+    accs_train, accs_valid = [], []
+    win_loss_train, win_loss_valid = None, None
+    win_acc_train, win_acc_valid = None, None
 
     for ep in np.arange(epochs):
         # train
@@ -85,7 +112,7 @@ def train(model, optimizer, criterion,
         print('\nEpoch {} / {}'.format(ep + 1, epochs))
 
         model.train()
-        for i, data in tqdm(enumerate(train_dl, 0)):
+        for i, data in tqdm(enumerate(train_dl)):
             optimizer.zero_grad()
 
             inputs, labels = data
@@ -117,6 +144,20 @@ def train(model, optimizer, criterion,
             torch.save(optimizer.state_dict(),
                        os.path.join(save_to, 'optim_best_acc_train.pth'))
 
+        losses_train.append(running_loss)
+        accs_train.append(running_acc)
+
+        # plotting
+        if vis is not None:
+            win_loss_train = vis_plot(
+                vis, np.arange(start=1, stop=ep + 2), losses_train, 'Epochs',
+                'Loss', 'Train loss', win=win_loss_train
+            )
+            win_acc_train = vis_plot(
+                vis, np.arange(start=1, stop=ep + 2), accs_train, 'Epochs',
+                'Accuracy', 'Train accuracy', win=win_acc_train
+            )
+
         print('Train loss:', running_loss)
         print('Train acc:', running_acc)
 
@@ -126,7 +167,7 @@ def train(model, optimizer, criterion,
         running_loss = 0.0
         model.eval()
         with torch.no_grad():
-            for i, data in tqdm(enumerate(valid_dl, 0)):
+            for i, data in tqdm(enumerate(valid_dl)):
                 inputs, labels = data
                 inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
                 outputs = model(inputs)
@@ -153,12 +194,32 @@ def train(model, optimizer, criterion,
             torch.save(optimizer.state_dict(),
                        os.path.join(save_to, 'optim_best_acc_valid.pth'))
 
+        losses_valid.append(running_loss)
+        accs_valid.append(running_acc)
+
+        # plotting
+        if vis is not None:
+            win_loss_valid = vis_plot(
+                vis, np.arange(start=1, stop=ep + 2), losses_valid, 'Epochs',
+                'Loss', 'Valid loss', win=win_loss_valid
+            )
+            win_acc_valid = vis_plot(
+                vis, np.arange(start=1, stop=ep + 2), accs_valid, 'Epochs',
+                'Accuracy', 'Valid accuracy', win=win_acc_valid
+            )
+
         print('Valid loss:', running_loss)
         print('Valid acc:', running_acc)
 
 
 def main():
     args = get_args()
+
+    if (args.server is not None) and (args.port is not None):
+        vis = Visdom(server=args.server, port=args.port)
+    else:
+        vis = None
+
     train_df = pd.read_csv(args.train_csv).to_numpy()
     valid_df = pd.read_csv(args.valid_csv).to_numpy()
     train_paths = train_df[:, 0]
@@ -181,7 +242,7 @@ def main():
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        transforms.Normalize(mean=MEAN, std=STD)
     ])
 
     valid_trans = transforms.Compose([
@@ -189,7 +250,7 @@ def main():
         # transforms.Resize(args.resize_to),
         # transforms.CenterCrop(input_img_size),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        transforms.Normalize(mean=MEAN, std=STD)
     ])
 
     train_ds = SeedlingDataset(train_paths, train_labels, train_trans)
@@ -232,13 +293,14 @@ def main():
 
     # run training
     train(
-        model,
-        optimizer,
-        criterion,
-        train_dl,
-        valid_dl,
-        args.epochs,
-        args.save_to
+        model=model,
+        optimizer=optimizer,
+        criterion=criterion,
+        train_dl=train_dl,
+        valid_dl=valid_dl,
+        epochs=args.epochs,
+        save_to=args.save_to,
+        vis=vis
     )
     print('Done!')
 
