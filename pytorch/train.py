@@ -52,6 +52,8 @@ def get_args():
                         help='Visdom\'s address.')
     parser.add_argument('--port', type=int,
                         help='Visdom\'s port.')
+    parser.add_argument('--random-rotation', nargs=2, type=int, default=[0, 0],
+                        help='Enable random rotation in given gap of degrees.')
 
     args = parser.parse_args()
     if not os.path.exists(args.save_to):
@@ -106,6 +108,8 @@ def train(model, optimizer, criterion, train_dl, valid_dl, epochs=10,
     losses_train, losses_valid = [], []
     accs_train, accs_valid = [], []
     win_loss, win_acc = None, None
+    loss_text_win_train, acc_text_win_train = None, None
+    loss_text_win_valid, acc_text_win_valid = None, None
 
     for ep in np.arange(epochs):
         # train
@@ -138,6 +142,10 @@ def train(model, optimizer, criterion, train_dl, valid_dl, epochs=10,
                        os.path.join(save_to, 'model_best_loss_train.pth'))
             torch.save(optimizer.state_dict(),
                        os.path.join(save_to, 'optim_best_loss_train.pth'))
+            loss_text_win_train = vis.text(
+                'Best train loss: ' + str(best_loss_train),
+                win=loss_text_win_train
+            )
 
         running_acc = 100 * correct / total
         if running_acc > best_acc_train:
@@ -146,6 +154,10 @@ def train(model, optimizer, criterion, train_dl, valid_dl, epochs=10,
                        os.path.join(save_to, 'model_best_acc_train.pth'))
             torch.save(optimizer.state_dict(),
                        os.path.join(save_to, 'optim_best_acc_train.pth'))
+            acc_text_win_train = vis.text(
+                'Best train accuracy: ' + str(best_acc_train),
+                win=acc_text_win_train
+            )
 
         losses_train.append(running_loss)
         accs_train.append(running_acc)
@@ -177,6 +189,10 @@ def train(model, optimizer, criterion, train_dl, valid_dl, epochs=10,
                        os.path.join(save_to, 'model_best_loss_valid.pth'))
             torch.save(optimizer.state_dict(),
                        os.path.join(save_to, 'optim_best_loss_valid.pth'))
+            loss_text_win_valid = vis.text(
+                'Best valid loss: ' + str(best_loss_valid),
+                win=loss_text_win_valid
+            )
 
         running_acc = 100 * correct / total
         if running_acc > best_acc_valid:
@@ -185,9 +201,16 @@ def train(model, optimizer, criterion, train_dl, valid_dl, epochs=10,
                        os.path.join(save_to, 'model_best_acc_valid.pth'))
             torch.save(optimizer.state_dict(),
                        os.path.join(save_to, 'optim_best_acc_valid.pth'))
+            acc_text_win_valid = vis.text(
+                'Best valid accuracy: ' + str(best_acc_valid),
+                win=acc_text_win_valid
+            )
 
         losses_valid.append(running_loss)
         accs_valid.append(running_acc)
+
+        print('Valid loss:', running_loss)
+        print('Valid acc:', running_acc)
 
         # plotting
         if vis is not None:
@@ -197,9 +220,6 @@ def train(model, optimizer, criterion, train_dl, valid_dl, epochs=10,
             win_acc = vis_plot(
                 vis, ep, accs_train, accs_valid, 'Accuracy', win=win_acc
             )
-
-        print('Valid loss:', running_loss)
-        print('Valid acc:', running_acc)
 
 
 def main():
@@ -226,9 +246,8 @@ def main():
     # prepare dataloaders
     input_img_size = 224  # input size for ResNet
     train_trans = transforms.Compose([
+        transforms.RandomRotation(args.random_rotation, expand=True),
         transforms.Resize((input_img_size, input_img_size)),
-        # transforms.Resize(args.resize_to),
-        # transforms.RandomResizedCrop(input_img_size),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
         transforms.ToTensor(),
@@ -237,8 +256,6 @@ def main():
 
     valid_trans = transforms.Compose([
         transforms.Resize((input_img_size, input_img_size)),
-        # transforms.Resize(args.resize_to),
-        # transforms.CenterCrop(input_img_size),
         transforms.ToTensor(),
         transforms.Normalize(mean=MEAN, std=STD)
     ])
