@@ -45,6 +45,7 @@ def main():
         num_classes=len(ckpt['classes_mp'].keys())
     )
     model.load_state_dict(ckpt['state_dict'])
+    model.eval()
 
     predict = torch.max(model(img), 1).indices.numpy()[0]
     id2class_name = {v: k for k, v in ckpt['classes_mp'].items()}
