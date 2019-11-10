@@ -56,13 +56,7 @@ def get_args():
                         help='Enable random rotation in given gap of degrees.')
 
     args = parser.parse_args()
-    if not os.path.exists(args.save_to):
-        try:
-            os.mkdir(args.save_to)
-            print('\n"save-to" dir has been created.')
-        except Exception as e:
-            print('"save-to" does not exist and can\'t be created:', e)
-            exit(1)
+    os.makedirs(args.save_to, exist_ok=True)
 
     return args
 
@@ -101,7 +95,7 @@ def vis_plot(vis, epoch, y_train, y_valid, metric_name='Loss', win=None):
     return win
 
 
-def train(model, optimizer, criterion, train_dl, valid_dl, epochs=10,
+def train(model, optimizer, criterion, train_dl, valid_dl, classes, epochs=10,
           save_to=None, vis=None):
     best_loss_train, best_loss_valid = np.inf, np.inf
     best_acc_train, best_acc_valid = 0.0, 0.0
@@ -138,10 +132,11 @@ def train(model, optimizer, criterion, train_dl, valid_dl, epochs=10,
 
         if running_loss < best_loss_train:
             best_loss_train = running_loss
-            torch.save(model.state_dict(),
-                       os.path.join(save_to, 'model_best_loss_train.pth'))
-            torch.save(optimizer.state_dict(),
-                       os.path.join(save_to, 'optim_best_loss_train.pth'))
+            torch.save({
+                'state_dict': model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'classes_mp': classes
+            }, os.path.join(save_to, 'model_best_loss_train.pth'))
             loss_text_win_train = vis.text(
                 'Best train loss: ' + str(best_loss_train),
                 win=loss_text_win_train
@@ -150,10 +145,11 @@ def train(model, optimizer, criterion, train_dl, valid_dl, epochs=10,
         running_acc = 100 * correct / total
         if running_acc > best_acc_train:
             best_acc_train = running_acc
-            torch.save(model.state_dict(),
-                       os.path.join(save_to, 'model_best_acc_train.pth'))
-            torch.save(optimizer.state_dict(),
-                       os.path.join(save_to, 'optim_best_acc_train.pth'))
+            torch.save({
+                'state_dict': model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'classes_mp': classes
+            }, os.path.join(save_to, 'model_best_acc_train.pth'))
             acc_text_win_train = vis.text(
                 'Best train accuracy: ' + str(best_acc_train),
                 win=acc_text_win_train
@@ -185,10 +181,11 @@ def train(model, optimizer, criterion, train_dl, valid_dl, epochs=10,
 
         if running_loss < best_loss_valid:
             best_loss_valid = running_loss
-            torch.save(model.state_dict(),
-                       os.path.join(save_to, 'model_best_loss_valid.pth'))
-            torch.save(optimizer.state_dict(),
-                       os.path.join(save_to, 'optim_best_loss_valid.pth'))
+            torch.save({
+                'state_dict': model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'classes_mp': classes
+            }, os.path.join(save_to, 'model_best_loss_valid.pth'))
             loss_text_win_valid = vis.text(
                 'Best valid loss: ' + str(best_loss_valid),
                 win=loss_text_win_valid
@@ -197,10 +194,11 @@ def train(model, optimizer, criterion, train_dl, valid_dl, epochs=10,
         running_acc = 100 * correct / total
         if running_acc > best_acc_valid:
             best_acc_valid = running_acc
-            torch.save(model.state_dict(),
-                       os.path.join(save_to, 'model_best_acc_valid.pth'))
-            torch.save(optimizer.state_dict(),
-                       os.path.join(save_to, 'optim_best_acc_valid.pth'))
+            torch.save({
+                'state_dict': model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'classes_mp': classes
+            }, os.path.join(save_to, 'model_best_acc_valid.pth'))
             acc_text_win_valid = vis.text(
                 'Best valid accuracy: ' + str(best_acc_valid),
                 win=acc_text_win_valid
@@ -305,6 +303,7 @@ def main():
         criterion=criterion,
         train_dl=train_dl,
         valid_dl=valid_dl,
+        classes=classes_mp,
         epochs=args.epochs,
         save_to=args.save_to,
         vis=vis
