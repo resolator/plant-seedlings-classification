@@ -36,7 +36,7 @@ def get_args():
     return args
 
 
-if __name__ == '__main__':
+def main():
     args = get_args()
     train_data = {'paths': [], 'class_names': []}
     valid_data = {'paths': [], 'class_names': []}
@@ -60,3 +60,7 @@ if __name__ == '__main__':
     train_df.to_csv(os.path.join(args.save_to, 'train.csv'), index=False)
     valid_df.to_csv(os.path.join(args.save_to, 'valid.csv'), index=False)
     print('Done!')
+
+
+if __name__ == '__main__':
+    main()
